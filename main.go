@@ -33,6 +33,9 @@ func (n *DiscoveryNotifee) HandlePeerFound(info peer.AddrInfo) {
 		return
 	}
 
+	if n.node.ID().String() < info.ID.String() {
+		return
+	}
 	fmt.Println("\nFound peer:", info.ID)
 
 	err := n.node.Connect(context.Background(), info)
@@ -74,7 +77,6 @@ func readMessages(peerID string, stream network.Stream) {
 		err := decoder.Decode(&msg)
 
 		if err != nil {
-
 			fmt.Println("\nConnection closed with:", peerID)
 
 			mu.Lock()
@@ -84,14 +86,7 @@ func readMessages(peerID string, stream network.Stream) {
 			return
 		}
 
-		fmt.Printf(
-			"\n[%s] %s: %s\n",
-			msg.Type,
-			msg.Username,
-			msg.Message,
-		)
-
-		fmt.Print("> ")
+		handleMessage(msg)
 	}
 }
 
@@ -131,6 +126,31 @@ func sendToAll(msg Message) {
 			fmt.Println("Send error to", id, ":", err)
 			continue
 		}
+	}
+}
+func handleChat(msg Message) {
+	fmt.Printf(
+		"\n%s: %s\n",
+		msg.Username,
+		msg.Message,
+	)
+}
+
+func handleMessage(msg Message) {
+
+	switch msg.Type {
+
+	case "chat":
+		handleChat(msg)
+
+	case "system":
+		//handleSystem(msg)
+
+	case "ping":
+		//handlePing(msg)
+
+	default:
+		fmt.Println("Unknown message type:", msg.Type)
 	}
 }
 
