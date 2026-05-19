@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	libp2p "github.com/libp2p/go-libp2p"
 
@@ -62,11 +64,17 @@ func (n *DiscoveryNotifee) HandlePeerFound(info peer.AddrInfo) {
 }
 
 func readMessages(peerID string, stream network.Stream) {
-	reader := bufio.NewReader(stream)
+
+	decoder := json.NewDecoder(stream)
 
 	for {
-		msg, err := reader.ReadString('\n')
+
+		var msg Message
+
+		err := decoder.Decode(&msg)
+
 		if err != nil {
+
 			fmt.Println("\nConnection closed with:", peerID)
 
 			mu.Lock()
@@ -76,7 +84,13 @@ func readMessages(peerID string, stream network.Stream) {
 			return
 		}
 
-		fmt.Printf("\nFriend (%s): %s", peerID, msg)
+		fmt.Printf(
+			"\n[%s] %s: %s\n",
+			msg.Type,
+			msg.Username,
+			msg.Message,
+		)
+
 		fmt.Print("> ")
 	}
 }
@@ -95,18 +109,28 @@ func handleStream(stream network.Stream) {
 	go readMessages(peerID, stream)
 }
 
-func sendToAll(msg string) {
+func sendToAll(msg Message) {
+
 	mu.Lock()
-	defer mu.Unlock()
+
+	streams := make(map[string]network.Stream)
 
 	for id, stream := range chatStreams {
-		writer := bufio.NewWriter(stream)
-		_, err := writer.WriteString(msg)
+		streams[id] = stream
+	}
+
+	mu.Unlock()
+
+	for id, stream := range streams {
+
+		encoder := json.NewEncoder(stream)
+
+		err := encoder.Encode(msg)
+
 		if err != nil {
 			fmt.Println("Send error to", id, ":", err)
 			continue
 		}
-		writer.Flush()
 	}
 }
 
@@ -156,6 +180,14 @@ func main() {
 			continue
 		}
 
-		sendToAll(text)
+		msg := Message{
+			Type:      "chat",
+			From:      node.ID().String(),
+			Username:  "anonymous",
+			Message:   text,
+			Timestamp: time.Now().Unix(),
+		}
+
+		sendToAll(msg)
 	}
 }
