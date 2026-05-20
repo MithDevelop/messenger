@@ -2,262 +2,19 @@ package main
 
 import (
 	"bufio"
-	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"sync"
 	"time"
 
 	libp2p "github.com/libp2p/go-libp2p"
 
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
-
 	mdns "github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 )
 
-const ProtocolID = "/messenger/1.0.0"
-
-// peerID -> stream
-var peers = make(map[string]*PeerInfo)
-var mu sync.Mutex
-
-// global name
-var username = "anonymous"
-
-type DiscoveryNotifee struct {
-	node host.Host
-}
-
-func (n *DiscoveryNotifee) HandlePeerFound(info peer.AddrInfo) {
-	if info.ID == n.node.ID() {
-		return
-	}
-
-	if n.node.ID().String() < info.ID.String() {
-		return
-	}
-	fmt.Println("\nFound peer:", info.ID)
-
-	err := n.node.Connect(context.Background(), info)
-	if err != nil {
-		fmt.Println("Connection failed:", err)
-		return
-	}
-
-	mu.Lock()
-	if _, exists := peers[info.ID.String()]; exists {
-		mu.Unlock()
-		return
-	}
-	mu.Unlock()
-
-	stream, err := n.node.NewStream(context.Background(), info.ID, ProtocolID)
-	if err != nil {
-		fmt.Println("Stream error:", err)
-		return
-	}
-
-	mu.Lock()
-	peers[info.ID.String()] = &PeerInfo{
-		ID:        info.ID.String(),
-		Stream:    stream,
-		Connected: time.Now(),
-		LastSeen:  time.Now(),
-	}
-	mu.Unlock()
-
-	fmt.Println("Chat stream created with:", info.ID)
-
-	go readMessages(info.ID.String(), stream)
-	sendUserInfo(info.ID.String())
-}
-
-func readMessages(peerID string, stream network.Stream) {
-
-	decoder := json.NewDecoder(stream)
-
-	for {
-
-		var msg Message
-
-		err := decoder.Decode(&msg)
-
-		if err != nil {
-
-			fmt.Println("\nConnection closed with:", peerID)
-
-			mu.Lock()
-			delete(peers, peerID)
-			mu.Unlock()
-
-			return
-		}
-
-		mu.Lock()
-
-		peerInfo, exists := peers[peerID]
-
-		if exists {
-			peerInfo.Username = msg.Username
-			peerInfo.LastSeen = time.Now()
-		}
-
-		mu.Unlock()
-
-		handleMessage(peerID, msg)
-	}
-}
-func sendUserInfo(peerID string) {
-
-	msg := Message{
-		Type:      "user_info",
-		From:      "",
-		To:        peerID,
-		Username:  username,
-		Message:   "",
-		Timestamp: time.Now().Unix(),
-	}
-
-	sendToPeer(peerID, msg)
-}
-
-func handleStream(stream network.Stream) {
-
-	peerID := stream.Conn().RemotePeer().String()
-	fmt.Println("\nIncoming chat connection from:", peerID)
-
-	mu.Lock()
-
-	if _, exists := peers[peerID]; !exists {
-
-		peers[peerID] = &PeerInfo{
-			ID:        peerID,
-			Stream:    stream,
-			Connected: time.Now(),
-			LastSeen:  time.Now(),
-		}
-	}
-
-	mu.Unlock()
-
-	go readMessages(peerID, stream)
-	sendUserInfo(peerID)
-}
-
-func sendToAll(msg Message) {
-
-	mu.Lock()
-
-	streams := make(map[string]network.Stream)
-
-	for id, peer := range peers {
-		streams[id] = peer.Stream
-	}
-
-	mu.Unlock()
-
-	for id, stream := range streams {
-
-		encoder := json.NewEncoder(stream)
-
-		err := encoder.Encode(msg)
-
-		if err != nil {
-			fmt.Println("Send error to", id, ":", err)
-			continue
-		}
-	}
-}
-func handleChat(msg Message) {
-	fmt.Printf(
-		"\n%s: %s\n",
-		msg.Username,
-		msg.Message,
-	)
-}
-
-func handlePrivate(msg Message) {
-
-	fmt.Printf(
-		"\n[PRIVATE] %s: %s\n",
-		msg.Username,
-		msg.Message,
-	)
-
-	fmt.Print("> ")
-}
-
-func handleUserInfo(peerID string, msg Message) {
-
-	mu.Lock()
-
-	peerInfo, exists := peers[peerID]
-
-	if exists {
-		peerInfo.Username = msg.Username
-		peerInfo.LastSeen = time.Now()
-	}
-
-	mu.Unlock()
-
-	fmt.Printf(
-		"\nPeer %s is known as %s\n",
-		peerID,
-		msg.Username,
-	)
-
-	fmt.Print("> ")
-}
-
-func handleMessage(peerID string, msg Message) {
-
-	switch msg.Type {
-
-	case "chat":
-		handleChat(msg)
-
-	case "private":
-		handlePrivate(msg)
-	case "user_info":
-		handleUserInfo(peerID, msg)
-	case "system":
-		//handleSystem(msg)
-
-	case "ping":
-		//handlePing(msg)
-
-	default:
-		fmt.Println("Unknown message type:", msg.Type)
-	}
-}
-
-func sendToPeer(peerID string, msg Message) {
-
-	mu.Lock()
-
-	peer, exists := peers[peerID]
-
-	mu.Unlock()
-
-	if !exists {
-		fmt.Println("Peer not found")
-		return
-	}
-
-	encoder := json.NewEncoder(peer.Stream)
-
-	err := encoder.Encode(msg)
-
-	if err != nil {
-		fmt.Println("Send error:", err)
-	}
-}
-
 func main() {
+
 	node, err := libp2p.New()
+
 	if err != nil {
 		panic(err)
 	}
@@ -267,6 +24,7 @@ func main() {
 	fmt.Println("===================================")
 	fmt.Println(" Messenger started!")
 	fmt.Println("===================================")
+
 	fmt.Println("Peer ID:", node.ID())
 
 	for _, addr := range node.Addrs() {
@@ -290,13 +48,16 @@ func main() {
 	stdReader := bufio.NewReader(os.Stdin)
 
 	for {
+
 		fmt.Print("> ")
 
 		text, err := stdReader.ReadString('\n')
-		if handleCommand(text) {
+
+		if err != nil {
 			continue
 		}
-		if err != nil {
+
+		if handleCommand(text) {
 			continue
 		}
 
