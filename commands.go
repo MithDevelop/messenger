@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 func handleCommand(input string) bool {
@@ -25,9 +26,8 @@ func handleCommand(input string) bool {
 
 	case "/help":
 		fmt.Println("Commands:")
-		fmt.Println("/help")
-		fmt.Println("/nick <name>")
-		fmt.Println("/peers")
+		fmt.Println("/nick <name> - введи своё имя")
+		fmt.Println("/peers - участники")
 
 	case "/nick":
 
@@ -40,14 +40,41 @@ func handleCommand(input string) bool {
 
 		fmt.Println("Username changed to:", username)
 
+	case "/msg":
+		if len(parts) < 3 {
+			fmt.Println("Usage: /msg <peerID> <message>")
+			return true
+		}
+
+		peerID := parts[1]
+
+		text := strings.Join(parts[2:], " ")
+
+		msg := Message{
+			Type:      "private",
+			From:      "",
+			To:        peerID,
+			Username:  username,
+			Message:   text,
+			Timestamp: time.Now().Unix(),
+		}
+
+		sendToPeer(peerID, msg)
+
+		fmt.Println("Private message sent")
 	case "/peers":
 
 		mu.Lock()
 
 		fmt.Println("Connected peers:")
 
-		for id := range chatStreams {
-			fmt.Println("-", id)
+		for _, peer := range peers {
+
+			if peer.Username != "" {
+				fmt.Println("-", peer.Username)
+			} else {
+				fmt.Println("-", peer.ID)
+			}
 		}
 
 		mu.Unlock()

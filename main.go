@@ -21,7 +21,7 @@ import (
 const ProtocolID = "/messenger/1.0.0"
 
 // peerID -> stream
-var chatStreams = make(map[string]network.Stream)
+var peers = make(map[string]*PeerInfo)
 var mu sync.Mutex
 
 // global name
@@ -48,7 +48,7 @@ func (n *DiscoveryNotifee) HandlePeerFound(info peer.AddrInfo) {
 	}
 
 	mu.Lock()
-	if _, exists := chatStreams[info.ID.String()]; exists {
+	if _, exists := peers[info.ID.String()]; exists {
 		mu.Unlock()
 		return
 	}
@@ -61,12 +61,18 @@ func (n *DiscoveryNotifee) HandlePeerFound(info peer.AddrInfo) {
 	}
 
 	mu.Lock()
-	chatStreams[info.ID.String()] = stream
+	peers[info.ID.String()] = &PeerInfo{
+		ID:        info.ID.String(),
+		Stream:    stream,
+		Connected: time.Now(),
+		LastSeen:  time.Now(),
+	}
 	mu.Unlock()
 
 	fmt.Println("Chat stream created with:", info.ID)
 
 	go readMessages(info.ID.String(), stream)
+	sendUserInfo(info.ID.String())
 }
 
 func readMessages(peerID string, stream network.Stream) {
@@ -80,31 +86,65 @@ func readMessages(peerID string, stream network.Stream) {
 		err := decoder.Decode(&msg)
 
 		if err != nil {
+
 			fmt.Println("\nConnection closed with:", peerID)
 
 			mu.Lock()
-			delete(chatStreams, peerID)
+			delete(peers, peerID)
 			mu.Unlock()
 
 			return
 		}
 
-		handleMessage(msg)
+		mu.Lock()
+
+		peerInfo, exists := peers[peerID]
+
+		if exists {
+			peerInfo.Username = msg.Username
+			peerInfo.LastSeen = time.Now()
+		}
+
+		mu.Unlock()
+
+		handleMessage(peerID, msg)
 	}
+}
+func sendUserInfo(peerID string) {
+
+	msg := Message{
+		Type:      "user_info",
+		From:      "",
+		To:        peerID,
+		Username:  username,
+		Message:   "",
+		Timestamp: time.Now().Unix(),
+	}
+
+	sendToPeer(peerID, msg)
 }
 
 func handleStream(stream network.Stream) {
-	peerID := stream.Conn().RemotePeer().String()
 
+	peerID := stream.Conn().RemotePeer().String()
 	fmt.Println("\nIncoming chat connection from:", peerID)
 
 	mu.Lock()
-	if _, exists := chatStreams[peerID]; !exists {
-		chatStreams[peerID] = stream
+
+	if _, exists := peers[peerID]; !exists {
+
+		peers[peerID] = &PeerInfo{
+			ID:        peerID,
+			Stream:    stream,
+			Connected: time.Now(),
+			LastSeen:  time.Now(),
+		}
 	}
+
 	mu.Unlock()
 
 	go readMessages(peerID, stream)
+	sendUserInfo(peerID)
 }
 
 func sendToAll(msg Message) {
@@ -113,8 +153,8 @@ func sendToAll(msg Message) {
 
 	streams := make(map[string]network.Stream)
 
-	for id, stream := range chatStreams {
-		streams[id] = stream
+	for id, peer := range peers {
+		streams[id] = peer.Stream
 	}
 
 	mu.Unlock()
@@ -139,13 +179,50 @@ func handleChat(msg Message) {
 	)
 }
 
-func handleMessage(msg Message) {
+func handlePrivate(msg Message) {
+
+	fmt.Printf(
+		"\n[PRIVATE] %s: %s\n",
+		msg.Username,
+		msg.Message,
+	)
+
+	fmt.Print("> ")
+}
+
+func handleUserInfo(peerID string, msg Message) {
+
+	mu.Lock()
+
+	peerInfo, exists := peers[peerID]
+
+	if exists {
+		peerInfo.Username = msg.Username
+		peerInfo.LastSeen = time.Now()
+	}
+
+	mu.Unlock()
+
+	fmt.Printf(
+		"\nPeer %s is known as %s\n",
+		peerID,
+		msg.Username,
+	)
+
+	fmt.Print("> ")
+}
+
+func handleMessage(peerID string, msg Message) {
 
 	switch msg.Type {
 
 	case "chat":
 		handleChat(msg)
 
+	case "private":
+		handlePrivate(msg)
+	case "user_info":
+		handleUserInfo(peerID, msg)
 	case "system":
 		//handleSystem(msg)
 
@@ -154,6 +231,28 @@ func handleMessage(msg Message) {
 
 	default:
 		fmt.Println("Unknown message type:", msg.Type)
+	}
+}
+
+func sendToPeer(peerID string, msg Message) {
+
+	mu.Lock()
+
+	peer, exists := peers[peerID]
+
+	mu.Unlock()
+
+	if !exists {
+		fmt.Println("Peer not found")
+		return
+	}
+
+	encoder := json.NewEncoder(peer.Stream)
+
+	err := encoder.Encode(msg)
+
+	if err != nil {
+		fmt.Println("Send error:", err)
 	}
 }
 
@@ -201,7 +300,7 @@ func main() {
 			continue
 		}
 
-		if len(chatStreams) == 0 {
+		if len(peers) == 0 {
 			fmt.Println("No peers connected.")
 			continue
 		}
