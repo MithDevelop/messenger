@@ -24,6 +24,9 @@ const ProtocolID = "/messenger/1.0.0"
 var chatStreams = make(map[string]network.Stream)
 var mu sync.Mutex
 
+// global name
+var username = "anonymous"
+
 type DiscoveryNotifee struct {
 	node host.Host
 }
@@ -191,6 +194,9 @@ func main() {
 		fmt.Print("> ")
 
 		text, err := stdReader.ReadString('\n')
+		if handleCommand(text) {
+			continue
+		}
 		if err != nil {
 			continue
 		}
@@ -203,7 +209,7 @@ func main() {
 		msg := Message{
 			Type:      "chat",
 			From:      node.ID().String(),
-			Username:  "anonymous",
+			Username:  username,
 			Message:   text,
 			Timestamp: time.Now().Unix(),
 		}
