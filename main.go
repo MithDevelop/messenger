@@ -20,6 +20,12 @@ func main() {
 		panic(err)
 	}
 
+	err = initDatabase()
+
+	if err != nil {
+		panic(err)
+	}
+
 	node, err := libp2p.New(
 		libp2p.Identity(priv),
 	)
@@ -96,6 +102,12 @@ func main() {
 			Username:  username,
 			Message:   text,
 			Timestamp: time.Now().Unix(),
+		}
+
+		err = saveMessage(msg)
+
+		if err != nil {
+			fmt.Println("DB save error:", err)
 		}
 
 		sendToAll(msg, true)

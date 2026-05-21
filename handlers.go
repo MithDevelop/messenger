@@ -7,13 +7,18 @@ import (
 
 func handleChat(msg Message) {
 
+	name := msg.Username
+
+	if name == "" {
+		name = msg.From
+	}
+
 	fmt.Printf(
 		"\n%s: %s\n",
-		msg.Username,
+		name,
 		msg.Message,
 	)
 
-	fmt.Print("> ")
 	ack := Message{
 		ID:        generateMessageID(),
 		Type:      "ack",
@@ -24,9 +29,23 @@ func handleChat(msg Message) {
 	}
 
 	sendToPeer(msg.From, ack, false)
+
+	err := saveMessage(msg)
+
+	if err != nil {
+		fmt.Println("DB save error:", err)
+	}
+
+	fmt.Print("> ")
 }
 
 func handlePrivate(msg Message) {
+
+	err := saveMessage(msg)
+
+	if err != nil {
+		fmt.Println("DB save error:", err)
+	}
 
 	fmt.Printf(
 		"\n[PRIVATE] %s: %s\n",
@@ -39,8 +58,9 @@ func handlePrivate(msg Message) {
 
 func handleUserInfo(peerID string, msg Message) {
 
+	isNew := false
+
 	mu.Lock()
-	defer mu.Unlock()
 
 	contact, exists := contacts[peerID]
 
@@ -54,13 +74,20 @@ func handleUserInfo(peerID string, msg Message) {
 			Trusted:  false,
 		}
 
-		fmt.Println("\nNew contact added:", msg.Username)
+		isNew = true
 
-		return
+	} else {
+
+		contact.Username = msg.Username
+		contact.LastSeen = time.Now()
 	}
 
-	contact.Username = msg.Username
-	contact.LastSeen = time.Now()
+	mu.Unlock()
+
+	if isNew {
+		fmt.Println("\nNew contact added:", msg.Username)
+		fmt.Print("> ")
+	}
 }
 
 func handleMessage(peerID string, msg Message) {
@@ -109,12 +136,13 @@ func handleMessage(peerID string, msg Message) {
 func handlePing(msg Message) {
 
 	reply := Message{
+		ID:        generateMessageID(),
 		Type:      "pong",
 		From:      "",
 		To:        msg.From,
 		Username:  username,
 		Message:   "",
-		Timestamp: msg.Timestamp,
+		Timestamp: time.Now().UnixMilli(),
 	}
 
 	sendToPeer(msg.From, reply, false)
@@ -145,6 +173,17 @@ func handleAck(msg Message) {
 		msg.ReplyTo,
 	)
 	mu.Lock()
-	delete(pendingMessages, msg.ReplyTo)
+
+	_, exists := pendingMessages[msg.ReplyTo]
+
+	if exists {
+		delete(pendingMessages, msg.ReplyTo)
+	}
+
 	mu.Unlock()
+
+	if exists {
+		fmt.Println("\nMessage delivered:", msg.ReplyTo)
+		fmt.Print("> ")
+	}
 }
