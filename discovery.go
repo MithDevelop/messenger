@@ -59,6 +59,8 @@ func (n *DiscoveryNotifee) HandlePeerFound(info peer.AddrInfo) {
 		Stream:    stream,
 		Connected: time.Now(),
 		LastSeen:  time.Now(),
+		Latency:   0,
+		Online:    true,
 	}
 
 	mu.Unlock()

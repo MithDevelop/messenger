@@ -1,6 +1,8 @@
 package main
 
 type Message struct {
+	ID        string `json:"id"`
+	ReplyTo   string `json:"reply_to"`
 	Type      string `json:"type"`
 	From      string `json:"from"`
 	To        string `json:"to"`

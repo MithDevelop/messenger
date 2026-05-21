@@ -51,6 +51,7 @@ func handleCommand(input string) bool {
 		text := strings.Join(parts[2:], " ")
 
 		msg := Message{
+			ID:        generateMessageID(),
 			Type:      "private",
 			From:      "",
 			To:        peerID,
@@ -59,7 +60,7 @@ func handleCommand(input string) bool {
 			Timestamp: time.Now().Unix(),
 		}
 
-		sendToPeer(peerID, msg)
+		sendToPeer(peerID, msg, true)
 
 		fmt.Println("Private message sent")
 	case "/peers":
@@ -70,11 +71,24 @@ func handleCommand(input string) bool {
 
 		for _, peer := range peers {
 
-			if peer.Username != "" {
-				fmt.Println("-", peer.Username)
-			} else {
-				fmt.Println("-", peer.ID)
+			name := peer.Username
+
+			if name == "" {
+				name = peer.ID
 			}
+
+			status := "offline"
+
+			if peer.Online {
+				status = "online"
+			}
+
+			fmt.Printf(
+				"- %s | %s | %dms\n",
+				name,
+				status,
+				peer.Latency,
+			)
 		}
 
 		mu.Unlock()

@@ -47,15 +47,15 @@ func readMessages(peerID string, stream network.Stream) {
 func sendUserInfo(peerID string) {
 
 	msg := Message{
+		ID:        generateMessageID(),
 		Type:      "user_info",
-		From:      "",
+		From:      localPeerID,
 		To:        peerID,
 		Username:  username,
-		Message:   "",
 		Timestamp: time.Now().Unix(),
 	}
 
-	sendToPeer(peerID, msg)
+	sendToPeer(peerID, msg, true)
 }
 
 func handleStream(stream network.Stream) {
@@ -73,6 +73,8 @@ func handleStream(stream network.Stream) {
 			Stream:    stream,
 			Connected: time.Now(),
 			LastSeen:  time.Now(),
+			Latency:   0,
+			Online:    true,
 		}
 	}
 
@@ -83,7 +85,7 @@ func handleStream(stream network.Stream) {
 	sendUserInfo(peerID)
 }
 
-func sendToAll(msg Message) {
+func sendToAll(msg Message, track bool) {
 
 	mu.Lock()
 
@@ -108,7 +110,7 @@ func sendToAll(msg Message) {
 	}
 }
 
-func sendToPeer(peerID string, msg Message) {
+func sendToPeer(peerID string, msg Message, track bool) {
 
 	mu.Lock()
 
@@ -127,5 +129,20 @@ func sendToPeer(peerID string, msg Message) {
 
 	if err != nil {
 		fmt.Println("Send error:", err)
+		return
+	}
+
+	if track && msg.Type != "ack" && msg.Type != "pong" {
+
+		mu.Lock()
+
+		pendingMessages[msg.ID] = PendingMessage{
+			Message:    msg,
+			PeerID:     peerID,
+			SentAt:     time.Now(),
+			RetryCount: 0,
+		}
+
+		mu.Unlock()
 	}
 }

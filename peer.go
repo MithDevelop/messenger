@@ -9,6 +9,8 @@ import (
 type PeerInfo struct {
 	ID        string
 	Username  string
+	Latency   int64
+	Online    bool
 	Stream    network.Stream
 	Connected time.Time
 	LastSeen  time.Time
