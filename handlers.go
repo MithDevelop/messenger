@@ -40,23 +40,27 @@ func handlePrivate(msg Message) {
 func handleUserInfo(peerID string, msg Message) {
 
 	mu.Lock()
+	defer mu.Unlock()
 
-	peerInfo, exists := peers[peerID]
+	contact, exists := contacts[peerID]
 
-	if exists {
-		peerInfo.Username = msg.Username
-		peerInfo.LastSeen = time.Now()
+	if !exists {
+
+		contacts[peerID] = &Contact{
+			PeerID:   peerID,
+			Username: msg.Username,
+			AddedAt:  time.Now(),
+			LastSeen: time.Now(),
+			Trusted:  false,
+		}
+
+		fmt.Println("\nNew contact added:", msg.Username)
+
+		return
 	}
 
-	mu.Unlock()
-
-	fmt.Printf(
-		"\nPeer %s is known as %s\n",
-		peerID,
-		msg.Username,
-	)
-
-	fmt.Print("> ")
+	contact.Username = msg.Username
+	contact.LastSeen = time.Now()
 }
 
 func handleMessage(peerID string, msg Message) {

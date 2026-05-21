@@ -10,6 +10,8 @@ var processedMessages = make(map[string]bool)
 
 var pendingMessages = make(map[string]PendingMessage)
 
+var contacts = make(map[string]*Contact)
+
 var mu sync.Mutex
 
 var username = "anonymous"

@@ -28,6 +28,9 @@ func handleCommand(input string) bool {
 		fmt.Println("Commands:")
 		fmt.Println("/nick <name> - введи своё имя")
 		fmt.Println("/peers - участники")
+		fmt.Println("/msg <peerID> - личное сообщение")
+		fmt.Println("/contacts - контакты")
+		fmt.Println("")
 
 	case "/nick":
 
@@ -63,6 +66,7 @@ func handleCommand(input string) bool {
 		sendToPeer(peerID, msg, true)
 
 		fmt.Println("Private message sent")
+
 	case "/peers":
 
 		mu.Lock()
@@ -88,6 +92,22 @@ func handleCommand(input string) bool {
 				name,
 				status,
 				peer.Latency,
+			)
+		}
+		mu.Unlock()
+
+	case "/contacts":
+
+		mu.Lock()
+
+		fmt.Println("Contacts:")
+
+		for _, contact := range contacts {
+
+			fmt.Printf(
+				"- %s (%s)\n",
+				contact.Username,
+				contact.PeerID,
 			)
 		}
 
