@@ -1,12 +1,16 @@
-package main
+package chat
 
 import (
 	"fmt"
+	"messenger/internal/models"
+	"messenger/internal/network"
+	"messenger/internal/state"
+	"messenger/internal/utils"
 	"strings"
 	"time"
 )
 
-func handleCommand(input string) bool {
+func HandleCommand(input string) bool {
 
 	if len(input) == 0 {
 		return true
@@ -39,9 +43,9 @@ func handleCommand(input string) bool {
 			return true
 		}
 
-		username = parts[1]
+		state.Username = parts[1]
 
-		fmt.Println("Username changed to:", username)
+		fmt.Println("Username changed to:", state.Username)
 
 	case "/msg":
 		if len(parts) < 3 {
@@ -53,27 +57,27 @@ func handleCommand(input string) bool {
 
 		text := strings.Join(parts[2:], " ")
 
-		msg := Message{
-			ID:        generateMessageID(),
+		msg := models.Message{
+			ID:        utils.GenerateMessageID(),
 			Type:      "private",
 			From:      "",
 			To:        peerID,
-			Username:  username,
+			Username:  state.Username,
 			Message:   text,
 			Timestamp: time.Now().Unix(),
 		}
 
-		sendToPeer(peerID, msg, true)
+		network.SendToPeer(peerID, msg, true)
 
 		fmt.Println("Private message sent")
 
 	case "/peers":
 
-		mu.Lock()
+		state.Mu.Lock()
 
 		fmt.Println("Connected peers:")
 
-		for _, peer := range peers {
+		for _, peer := range state.Peers {
 
 			name := peer.Username
 
@@ -94,15 +98,15 @@ func handleCommand(input string) bool {
 				peer.Latency,
 			)
 		}
-		mu.Unlock()
+		state.Mu.Unlock()
 
 	case "/contacts":
 
-		mu.Lock()
+		state.Mu.Lock()
 
 		fmt.Println("Contacts:")
 
-		for _, contact := range contacts {
+		for _, contact := range state.Contacts {
 
 			fmt.Printf(
 				"- %s (%s)\n",
@@ -111,7 +115,7 @@ func handleCommand(input string) bool {
 			)
 		}
 
-		mu.Unlock()
+		state.Mu.Unlock()
 
 	default:
 		fmt.Println("Unknown command")

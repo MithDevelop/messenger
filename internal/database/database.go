@@ -1,15 +1,16 @@
-package main
+package database
 
 import (
 	"database/sql"
 	"fmt"
+	"messenger/internal/models"
 
 	_ "modernc.org/sqlite"
 )
 
 var db *sql.DB
 
-func initDatabase() error {
+func InitDatabase() error {
 
 	var err error
 
@@ -76,7 +77,7 @@ func createTables() error {
 	return nil
 }
 
-func saveMessage(msg Message) error {
+func SaveMessage(msg models.Message) error {
 
 	query := `
 	INSERT OR IGNORE INTO messages (

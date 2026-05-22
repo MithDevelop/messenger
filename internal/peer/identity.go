@@ -1,4 +1,4 @@
-package main
+package peer
 
 import (
 	"crypto/rand"
@@ -7,7 +7,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 )
 
-func loadOrCreateIdentity() (crypto.PrivKey, error) {
+func LoadOrCreateIdentity() (crypto.PrivKey, error) {
 
 	if _, err := os.Stat("identity.key"); err == nil {
 

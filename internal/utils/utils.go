@@ -1,11 +1,11 @@
-package main
+package utils
 
 import (
 	"fmt"
 	"time"
 )
 
-func generateMessageID() string {
+func GenerateMessageID() string {
 
 	return fmt.Sprintf(
 		"%d",

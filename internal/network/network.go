@@ -1,20 +1,25 @@
-package main
+package network
 
 import (
 	"encoding/json"
 	"fmt"
+	"messenger/internal/database"
+	"messenger/internal/models"
+	"messenger/internal/peer"
+	"messenger/internal/state"
+	"messenger/internal/utils"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
 )
 
-func readMessages(peerID string, stream network.Stream) {
+func ReadMessages(peerID string, stream network.Stream) {
 
 	decoder := json.NewDecoder(stream)
 
 	for {
 
-		var msg Message
+		var msg models.Message
 
 		err := decoder.Decode(&msg)
 
@@ -22,53 +27,53 @@ func readMessages(peerID string, stream network.Stream) {
 
 			fmt.Println("\nConnection closed with:", peerID)
 
-			mu.Lock()
-			delete(peers, peerID)
-			mu.Unlock()
+			state.Mu.Lock()
+			delete(state.Peers, peerID)
+			state.Mu.Unlock()
 
 			return
 		}
 
-		mu.Lock()
+		state.Mu.Lock()
 
-		peerInfo, exists := peers[peerID]
+		peerInfo, exists := state.Peers[peerID]
 
 		if exists {
 			peerInfo.Username = msg.Username
 			peerInfo.LastSeen = time.Now()
 		}
 
-		mu.Unlock()
+		state.Mu.Unlock()
 
-		handleMessage(peerID, msg)
+		HandleMessage(peerID, msg)
 	}
 }
 
-func sendUserInfo(peerID string) {
+func SendUserInfo(peerID string) {
 
-	msg := Message{
-		ID:        generateMessageID(),
+	msg := models.Message{
+		ID:        utils.GenerateMessageID(),
 		Type:      "user_info",
-		From:      localPeerID,
+		From:      state.LocalPeerID,
 		To:        peerID,
-		Username:  username,
+		Username:  state.Username,
 		Timestamp: time.Now().Unix(),
 	}
 
-	sendToPeer(peerID, msg, true)
+	SendToPeer(peerID, msg, true)
 }
 
-func handleStream(stream network.Stream) {
+func HandleStream(stream network.Stream) {
 
 	peerID := stream.Conn().RemotePeer().String()
 
 	fmt.Println("\nIncoming chat connection from:", peerID)
 
-	mu.Lock()
+	state.Mu.Lock()
 
-	if _, exists := peers[peerID]; !exists {
+	if _, exists := state.Peers[peerID]; !exists {
 
-		peers[peerID] = &PeerInfo{
+		state.Peers[peerID] = &peer.PeerInfo{
 			ID:        peerID,
 			Stream:    stream,
 			Connected: time.Now(),
@@ -78,24 +83,24 @@ func handleStream(stream network.Stream) {
 		}
 	}
 
-	mu.Unlock()
+	state.Mu.Unlock()
 
-	go readMessages(peerID, stream)
+	go ReadMessages(peerID, stream)
 
-	sendUserInfo(peerID)
+	SendUserInfo(peerID)
 }
 
-func sendToAll(msg Message, track bool) {
+func SendToAll(msg models.Message, track bool) {
 
-	mu.Lock()
+	state.Mu.Lock()
 
 	streams := make(map[string]network.Stream)
 
-	for id, peer := range peers {
+	for id, peer := range state.Peers {
 		streams[id] = peer.Stream
 	}
 
-	mu.Unlock()
+	state.Mu.Unlock()
 
 	for id, stream := range streams {
 
@@ -110,13 +115,13 @@ func sendToAll(msg Message, track bool) {
 	}
 }
 
-func sendToPeer(peerID string, msg Message, track bool) {
+func SendToPeer(peerID string, msg models.Message, track bool) {
 
-	mu.Lock()
+	state.Mu.Lock()
 
-	peer, exists := peers[peerID]
+	peer, exists := state.Peers[peerID]
 
-	mu.Unlock()
+	state.Mu.Unlock()
 
 	if !exists {
 		fmt.Println("Peer not found")
@@ -134,15 +139,15 @@ func sendToPeer(peerID string, msg Message, track bool) {
 
 	if track && msg.Type != "ack" && msg.Type != "pong" {
 
-		mu.Lock()
+		state.Mu.Lock()
 
-		pendingMessages[msg.ID] = PendingMessage{
+		state.PendingMessages[msg.ID] = database.PendingMessage{
 			Message:    msg,
 			PeerID:     peerID,
 			SentAt:     time.Now(),
 			RetryCount: 0,
 		}
 
-		mu.Unlock()
+		state.Mu.Unlock()
 	}
 }

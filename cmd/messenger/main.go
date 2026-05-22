@@ -3,24 +3,30 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"messenger/internal/chat"
+	"messenger/internal/database"
+	"messenger/internal/models"
+	"messenger/internal/network"
+	"messenger/internal/peer"
+	"messenger/internal/state"
+	"messenger/internal/utils"
 	"os"
 	"strings"
 	"time"
 
 	libp2p "github.com/libp2p/go-libp2p"
-
 	mdns "github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 )
 
 func main() {
 
-	priv, err := loadOrCreateIdentity()
+	priv, err := peer.LoadOrCreateIdentity()
 
 	if err != nil {
 		panic(err)
 	}
 
-	err = initDatabase()
+	err = database.InitDatabase()
 
 	if err != nil {
 		panic(err)
@@ -34,8 +40,8 @@ func main() {
 		panic(err)
 	}
 
-	node.SetStreamHandler(ProtocolID, handleStream)
-	localPeerID = node.ID().String()
+	node.SetStreamHandler(state.ProtocolID, network.HandleStream)
+	state.LocalPeerID = node.ID().String()
 
 	fmt.Println("===================================")
 	fmt.Println(" Messenger started!")
@@ -50,7 +56,7 @@ func main() {
 	service := mdns.NewMdnsService(
 		node,
 		"messenger-mdns",
-		&DiscoveryNotifee{node: node},
+		&network.DiscoveryNotifee{Node: node},
 	)
 
 	if err := service.Start(); err != nil {
@@ -60,9 +66,9 @@ func main() {
 	fmt.Println("\nmDNS discovery started!")
 	fmt.Println("Waiting for peers...")
 	fmt.Println("===================================")
-	go startPresenceLoop()
-	go monitorPeers()
-	go startRetryLoop()
+	network.StartPresenceLoop()
+	network.MonitorPeers()
+	network.StartRetryLoop()
 
 	stdReader := bufio.NewReader(os.Stdin)
 
@@ -82,34 +88,34 @@ func main() {
 			continue
 		}
 
-		if handleCommand(text) {
+		if chat.HandleCommand(text) {
 			continue
 		}
 
-		mu.Lock()
-		peerCount := len(peers)
-		mu.Unlock()
+		state.Mu.Lock()
+		peerCount := len(state.Peers)
+		state.Mu.Unlock()
 
 		if peerCount == 0 {
 			fmt.Println("No peers connected.")
 			continue
 		}
 
-		msg := Message{
-			ID:        generateMessageID(),
+		msg := models.Message{
+			ID:        utils.GenerateMessageID(),
 			Type:      "chat",
 			From:      node.ID().String(),
-			Username:  username,
+			Username:  state.Username,
 			Message:   text,
 			Timestamp: time.Now().Unix(),
 		}
 
-		err = saveMessage(msg)
+		err = database.SaveMessage(msg)
 
 		if err != nil {
 			fmt.Println("DB save error:", err)
 		}
 
-		sendToAll(msg, true)
+		network.SendToAll(msg, true)
 	}
 }

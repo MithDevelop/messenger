@@ -1,11 +1,15 @@
-package main
+package network
 
 import (
 	"fmt"
+	"messenger/internal/database"
+	"messenger/internal/models"
+	"messenger/internal/state"
+	"messenger/internal/utils"
 	"time"
 )
 
-func handleChat(msg Message) {
+func HandleChat(msg models.Message) {
 
 	name := msg.Username
 
@@ -19,18 +23,18 @@ func handleChat(msg Message) {
 		msg.Message,
 	)
 
-	ack := Message{
-		ID:        generateMessageID(),
+	ack := models.Message{
+		ID:        utils.GenerateMessageID(),
 		Type:      "ack",
-		From:      localPeerID,
+		From:      state.LocalPeerID,
 		To:        msg.From,
 		ReplyTo:   msg.ID,
 		Timestamp: time.Now().Unix(),
 	}
 
-	sendToPeer(msg.From, ack, false)
+	SendToPeer(msg.From, ack, false)
 
-	err := saveMessage(msg)
+	err := database.SaveMessage(msg)
 
 	if err != nil {
 		fmt.Println("DB save error:", err)
@@ -39,9 +43,9 @@ func handleChat(msg Message) {
 	fmt.Print("> ")
 }
 
-func handlePrivate(msg Message) {
+func HandlePrivate(msg models.Message) {
 
-	err := saveMessage(msg)
+	err := database.SaveMessage(msg)
 
 	if err != nil {
 		fmt.Println("DB save error:", err)
@@ -56,17 +60,17 @@ func handlePrivate(msg Message) {
 	fmt.Print("> ")
 }
 
-func handleUserInfo(peerID string, msg Message) {
+func HandleUserInfo(peerID string, msg models.Message) {
 
 	isNew := false
 
-	mu.Lock()
+	state.Mu.Lock()
 
-	contact, exists := contacts[peerID]
+	contact, exists := state.Contacts[peerID]
 
 	if !exists {
 
-		contacts[peerID] = &Contact{
+		state.Contacts[peerID] = &database.Contact{
 			PeerID:   peerID,
 			Username: msg.Username,
 			AddedAt:  time.Now(),
@@ -82,7 +86,7 @@ func handleUserInfo(peerID string, msg Message) {
 		contact.LastSeen = time.Now()
 	}
 
-	mu.Unlock()
+	state.Mu.Unlock()
 
 	if isNew {
 		fmt.Println("\nNew contact added:", msg.Username)
@@ -90,71 +94,71 @@ func handleUserInfo(peerID string, msg Message) {
 	}
 }
 
-func handleMessage(peerID string, msg Message) {
+func HandleMessage(peerID string, msg models.Message) {
 
 	//idempotent processing
 	if msg.ID != "" {
 
-		mu.Lock()
+		state.Mu.Lock()
 
-		if processedMessages[msg.ID] {
+		if state.ProcessedMessages[msg.ID] {
 
-			mu.Unlock()
+			state.Mu.Unlock()
 			return
 		}
 
-		processedMessages[msg.ID] = true
+		state.ProcessedMessages[msg.ID] = true
 
-		mu.Unlock()
+		state.Mu.Unlock()
 	}
 
 	switch msg.Type {
 
 	case "chat":
-		handleChat(msg)
+		HandleChat(msg)
 
 	case "private":
-		handlePrivate(msg)
+		HandlePrivate(msg)
 
 	case "user_info":
-		handleUserInfo(peerID, msg)
+		HandleUserInfo(peerID, msg)
 
 	case "ping":
-		handlePing(msg)
+		HandlePing(msg)
 
 	case "pong":
-		handlePong(peerID, msg)
+		HandlePong(peerID, msg)
 
 	case "ack":
-		handleAck(msg)
+		HandleAck(msg)
 
 	default:
 		fmt.Println("Unknown message type:", msg.Type)
 	}
 }
 
-func handlePing(msg Message) {
+func HandlePing(msg models.Message) {
 
-	reply := Message{
-		ID:        generateMessageID(),
+	reply := models.Message{
+		ID:        utils.GenerateMessageID(),
 		Type:      "pong",
 		From:      "",
 		To:        msg.From,
-		Username:  username,
+		Username:  state.Username,
 		Message:   "",
 		Timestamp: time.Now().UnixMilli(),
 	}
 
-	sendToPeer(msg.From, reply, false)
+	SendToPeer(msg.From, reply, false)
 }
 
-func handlePong(peerID string, msg Message) {
+func HandlePong(peerID string, msg models.Message) {
 
 	latency := time.Now().UnixMilli() - msg.Timestamp
 
-	mu.Lock()
+	state.Mu.Lock()
 
-	peer, exists := peers[peerID]
+	peer, exists := state.Peers[peerID]
 
 	if exists {
 
@@ -163,24 +167,24 @@ func handlePong(peerID string, msg Message) {
 		peer.Online = true
 	}
 
-	mu.Unlock()
+	state.Mu.Unlock()
 }
 
-func handleAck(msg Message) {
+func HandleAck(msg models.Message) {
 
 	fmt.Println(
 		"\nMessage delivered:",
 		msg.ReplyTo,
 	)
-	mu.Lock()
+	state.Mu.Lock()
 
-	_, exists := pendingMessages[msg.ReplyTo]
+	_, exists := state.PendingMessages[msg.ReplyTo]
 
 	if exists {
-		delete(pendingMessages, msg.ReplyTo)
+		delete(state.PendingMessages, msg.ReplyTo)
 	}
 
-	mu.Unlock()
+	state.Mu.Unlock()
 
 	if exists {
 		fmt.Println("\nMessage delivered:", msg.ReplyTo)
